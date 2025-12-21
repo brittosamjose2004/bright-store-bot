@@ -1,13 +1,26 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Product } from '../types';
+import { Product, VariantOption } from '../types';
 import { Linking } from 'react-native';
 import { useAuth } from './AuthContext';
 import { API_URL } from '../config';
 import { supabase } from '../lib/supabase';
 
+// Helper to generate unique ID for cart item (Product + Variants)
+const getCartItemId = (productId: string, selectedVariants?: Record<string, VariantOption>) => {
+    if (!selectedVariants || Object.keys(selectedVariants).length === 0) return productId;
+    const variantString = Object.entries(selectedVariants)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([key, val]) => `${key}:${val.label}`)
+        .join('|');
+    return `${productId}-${variantString}`;
+};
+
 export interface CartItem extends Product {
+    cartItemId: string; // Unique ID
     quantity: number;
+    selectedVariants?: Record<string, VariantOption>;
+    finalPrice: number; // Price including variants
 }
 
 export interface Coupon {
@@ -19,9 +32,9 @@ export interface Coupon {
 
 interface CartContextType {
     items: CartItem[];
-    addToCart: (product: Product, quantity?: number) => void;
-    removeFromCart: (productId: string) => void;
-    updateQuantity: (productId: string, quantity: number) => void;
+    addToCart: (product: Product, quantity?: number, selectedVariants?: Record<string, VariantOption>) => void;
+    removeFromCart: (cartItemId: string) => void;
+    updateQuantity: (cartItemId: string, quantity: number) => void;
     clearCart: () => void;
     checkout: (shippingAddress?: any) => Promise<void>;
     total: number;
@@ -85,29 +98,43 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    const addToCart = (product: Product, quantity: number = 1) => {
+    const addToCart = (product: Product, quantity: number = 1, selectedVariants?: Record<string, VariantOption>) => {
+        const cartItemId = getCartItemId(product.id, selectedVariants);
+
+        // Calculate final price based on variants
+        let finalPrice = product.price;
+        if (selectedVariants) {
+            Object.values(selectedVariants).forEach(opt => finalPrice += opt.priceModifier);
+        }
+
         setItems(current => {
-            const existing = current.find(item => item.id === product.id);
+            const existing = current.find(item => item.cartItemId === cartItemId);
             if (existing) {
                 return current.map(item =>
-                    item.id === product.id
+                    item.cartItemId === cartItemId
                         ? { ...item, quantity: item.quantity + quantity }
                         : item
                 );
             }
-            return [...current, { ...product, quantity }];
+            return [...current, {
+                ...product,
+                cartItemId,
+                quantity,
+                selectedVariants,
+                finalPrice
+            }];
         });
     };
 
-    const removeFromCart = (productId: string) => {
-        setItems(current => current.filter(item => item.id !== productId));
+    const removeFromCart = (cartItemId: string) => {
+        setItems(current => current.filter(item => item.cartItemId !== cartItemId));
     };
 
-    const updateQuantity = (productId: string, quantity: number) => {
+    const updateQuantity = (cartItemId: string, quantity: number) => {
         if (quantity < 1) return;
         setItems(current =>
             current.map(item =>
-                item.id === productId ? { ...item, quantity } : item
+                item.cartItemId === cartItemId ? { ...item, quantity } : item
             )
         );
     };
@@ -117,7 +144,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         setCoupon(null);
     };
 
-    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const subtotal = items.reduce((sum, item) => sum + (item.finalPrice * item.quantity), 0);
 
     const discount = coupon ? (
         coupon.discount_type === 'percentage'
@@ -145,9 +172,6 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
                 return false;
             }
 
-            // Check expiry if you have an expiry_date column
-            // if (new Date(data.expiry_date) < new Date()) return false;
-
             setCoupon(data);
             return true;
         } catch (error) {
@@ -160,7 +184,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
     const [deliveryRequested, setDeliveryRequested] = useState(false);
 
-    const LOCAL_PINCODES = ['600001', '600002', '600003', '600004', '600005']; // Example Chennai pincodes
+    const LOCAL_PINCODES = ['600001', '600002', '600003', '600004', '600005'];
     const isOutstation = profile?.pincode ? !LOCAL_PINCODES.includes(profile.pincode) : false;
 
     const checkout = async (shippingAddress?: any) => {
@@ -174,6 +198,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
             message += `Name: ${profile?.full_name || 'N/A'}\n`;
             message += `Phone: ${profile?.phone || 'N/A'}\n`;
 
+            // ... (keep existing address formatting) ...
             if (shippingAddress) {
                 message += `Address: ${shippingAddress.address_line1}, ${shippingAddress.address_line2 || ''}, ${shippingAddress.city} - ${shippingAddress.pincode}\n`;
                 if (shippingAddress.landmark) message += `Landmark: ${shippingAddress.landmark}\n`;
@@ -196,6 +221,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
                 const { data: { session } } = await supabase.auth.getSession();
                 const token = session?.access_token;
 
+                // Call Checkout API
                 const response = await fetch(`${API_URL}/api/checkout`, {
                     method: 'POST',
                     headers: {
@@ -216,9 +242,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
                 });
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Failed to process server-side checkout:', response.status, errorText);
-                    throw new Error(`Checkout failed: ${response.status} ${errorText}`);
+                    console.error('Checkout API failed', await response.text());
                 }
             } catch (error) {
                 console.error('Error calling checkout API:', error);
@@ -227,7 +251,10 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
         message += `*Order Items:*\n`;
         items.forEach(item => {
-            message += `- ${item.name} (${item.quantity} kg): ₹${item.price * item.quantity}\n`;
+            const variantText = item.selectedVariants
+                ? ` [${Object.values(item.selectedVariants).map(v => v.label).join(', ')}]`
+                : '';
+            message += `- ${item.name}${variantText} (${item.quantity} units): ₹${item.finalPrice * item.quantity}\n`;
         });
 
         message += `\n*Subtotal: ₹${subtotal}*`;

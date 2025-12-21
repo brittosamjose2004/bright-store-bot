@@ -37,14 +37,7 @@ function RootNavigator() {
     const { user, profile, loading } = useAuth();
     const navigation = useNavigation<any>();
 
-    useEffect(() => {
-        if (!loading && user) {
-            const isIncomplete = !profile || !profile.phone || !profile.address_line1;
-            if (isIncomplete) {
-                navigation.navigate('Profile');
-            }
-        }
-    }, [user, profile, loading, navigation]);
+    const isProfileComplete = user && profile && profile.phone && profile.address_line1;
 
     return (
         <Stack.Navigator
@@ -53,16 +46,31 @@ function RootNavigator() {
                 headerTintColor: '#EAB308',
             }}
         >
-            <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Shop" component={ShopScreen} />
-            <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} options={{ title: 'Product Details' }} />
-            <Stack.Screen name="Cart" component={CartScreen} />
-            <Stack.Screen name="Wishlist" component={WishlistScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen name="Orders" component={OrdersScreen} />
-            <Stack.Screen name="Addresses" component={AddressesScreen} />
-            <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+            {!user ? (
+                // 1. Auth Stack (No User)
+                <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+            ) : !isProfileComplete ? (
+                // 2. Incomplete Profile Stack (User logged in but missing details)
+                // We lock them here until they save.
+                <Stack.Screen
+                    name="Profile"
+                    component={ProfileScreen}
+                    options={{ title: 'Complete Your Profile' }}
+                />
+            ) : (
+                // 3. Main App Stack (User + Complete Profile)
+                <>
+                    <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+                    <Stack.Screen name="Shop" component={ShopScreen} />
+                    <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} options={{ title: 'Product Details' }} />
+                    <Stack.Screen name="Cart" component={CartScreen} />
+                    <Stack.Screen name="Wishlist" component={WishlistScreen} />
+                    <Stack.Screen name="Profile" component={ProfileScreen} />
+                    <Stack.Screen name="Orders" component={OrdersScreen} />
+                    <Stack.Screen name="Addresses" component={AddressesScreen} />
+                    <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+                </>
+            )}
         </Stack.Navigator>
     );
 }

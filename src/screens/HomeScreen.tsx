@@ -1,84 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList, Dimensions, ActivityIndicator } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { ArrowRight, ShoppingBag, User } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
-import { getBanners } from '../lib/firestore';
-import { Banner } from '../types';
+import AdCarousel from '../components/AdCarousel';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }: any) {
     const { user } = useAuth();
-    const [banners, setBanners] = useState<Banner[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [activeIndex, setActiveIndex] = useState(0);
-    const flatListRef = useRef<FlatList>(null);
-
-    useEffect(() => {
-        loadBanners();
-    }, []);
-
-    useEffect(() => {
-        if (banners.length > 1) {
-            const interval = setInterval(() => {
-                const nextIndex = (activeIndex + 1) % banners.length;
-                setActiveIndex(nextIndex);
-                flatListRef.current?.scrollToIndex({
-                    index: nextIndex,
-                    animated: true,
-                });
-            }, 5000);
-            return () => clearInterval(interval);
-        }
-    }, [activeIndex, banners.length]);
-
-    const loadBanners = async () => {
-        try {
-            const data = await getBanners();
-            setBanners(data);
-        } catch (error) {
-            console.error('Error loading banners:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const renderBanner = ({ item }: { item: Banner }) => (
-        <View style={styles.bannerContainer}>
-            <Image source={{ uri: item.imageUrl }} style={styles.bannerImage} />
-            <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.8)']}
-                style={styles.bannerOverlay}
-            >
-                <Text style={styles.bannerTitle}>{item.title}</Text>
-                {item.link && (
-                    <TouchableOpacity
-                        style={styles.bannerButton}
-                        onPress={() => navigation.navigate('Shop')}
-                    >
-                        <Text style={styles.bannerButtonText}>Shop Now</Text>
-                    </TouchableOpacity>
-                )}
-            </LinearGradient>
-        </View>
-    );
-
-    const renderPagination = () => (
-        <View style={styles.paginationContainer}>
-            {banners.map((_, index) => (
-                <View
-                    key={index}
-                    style={[
-                        styles.paginationDot,
-                        index === activeIndex ? styles.paginationDotActive : styles.paginationDotInactive,
-                    ]}
-                />
-            ))}
-        </View>
-    );
 
     return (
         <View style={styles.container}>
@@ -103,87 +35,73 @@ export default function HomeScreen({ navigation }: any) {
                     </TouchableOpacity>
                 </View>
 
-                {loading ? (
-                    <View style={styles.center}>
-                        <ActivityIndicator size="large" color="#EAB308" />
-                    </View>
-                ) : banners.length > 0 ? (
-                    <View style={styles.carouselContainer}>
-                        <FlatList
-                            ref={flatListRef}
-                            data={banners}
-                            renderItem={renderBanner}
-                            horizontal
-                            pagingEnabled
-                            showsHorizontalScrollIndicator={false}
-                            onMomentumScrollEnd={(event) => {
-                                const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-                                setActiveIndex(newIndex);
-                            }}
-                            keyExtractor={(item) => item.id}
-                        />
-                        {renderPagination()}
-                    </View>
-                ) : (
-                    <>
-                        <View style={styles.logoContainer}>
-                            <BlurView intensity={20} tint="dark" style={styles.logoGlass}>
-                                <Image source={require('../../assets/logo.png')} style={styles.logo} />
-                            </BlurView>
-                        </View>
-
-                        <View style={styles.textContainer}>
-                            <Text style={styles.title}>
-                                Premium Quality,{'\n'}
-                                <Text style={styles.highlight}>Unbeatable Prices</Text>
-                            </Text>
-                            <Text style={styles.subtitle}>
-                                Experience the finest selection with our new weight-based pricing.
-                            </Text>
-                        </View>
-                    </>
-                )}
-
-                <View style={styles.actions}>
-                    <TouchableOpacity
-                        style={styles.primaryButton}
-                        onPress={() => navigation.navigate('Shop')}
-                    >
-                        <LinearGradient
-                            colors={['#EAB308', '#F97316']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.gradientButton}
-                        >
-                            <Text style={styles.primaryButtonText}>Shop Now</Text>
-                            <ArrowRight color="black" size={20} />
-                        </LinearGradient>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={styles.secondaryButton}
-                        onPress={() => navigation.navigate('Cart')}
-                    >
-                        <BlurView intensity={30} tint="light" style={styles.glassButton}>
-                            <Text style={styles.secondaryButtonText}>View Cart</Text>
-                            <ShoppingBag color="white" size={20} />
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+                    {/* Logo & Header */}
+                    <View style={styles.logoContainer}>
+                        <BlurView intensity={20} tint="dark" style={styles.logoGlass}>
+                            <Image source={require('../../assets/logo.png')} style={styles.logo} />
                         </BlurView>
-                    </TouchableOpacity>
-                </View>
+                    </View>
 
-                {/* Location Info */}
-                <View style={styles.locationContainer}>
-                    <Text style={styles.locationTitle}>Visit Us</Text>
-                    <Text style={styles.locationText}>
-                        46, Subhiksha Ave, Satya Nagar,{'\n'}
-                        Lakshmi Nagar, Kovilambakkam,{'\n'}
-                        Chennai, Tamil Nadu 600129
-                    </Text>
-                </View>
+                    <View style={styles.textContainer}>
+                        <Text style={styles.title}>
+                            Premium Quality,{'\n'}
+                            <Text style={styles.highlight}>Unbeatable Prices</Text>
+                        </Text>
+                        <Text style={styles.subtitle}>
+                            Experience the finest selection with our new weight-based pricing.
+                        </Text>
+                    </View>
+
+                    {/* New Dynamic Ad Carousel */}
+                    <View style={{ marginTop: 32 }}>
+                        <AdCarousel />
+                    </View>
+
+                    {/* Action Buttons */}
+                    <View style={styles.actions}>
+                        <TouchableOpacity
+                            style={styles.primaryButton}
+                            onPress={() => navigation.navigate('Shop')}
+                        >
+                            <LinearGradient
+                                colors={['#EAB308', '#F97316']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.gradientButton}
+                            >
+                                <Text style={styles.primaryButtonText}>Shop Now</Text>
+                                <ArrowRight color="black" size={20} />
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.secondaryButton}
+                            onPress={() => navigation.navigate('Cart')}
+                        >
+                            <BlurView intensity={30} tint="light" style={styles.glassButton}>
+                                <Text style={styles.secondaryButtonText}>View Cart</Text>
+                                <ShoppingBag color="white" size={20} />
+                            </BlurView>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Location Info */}
+                    <View style={styles.locationContainer}>
+                        <Text style={styles.locationTitle}>Visit Us</Text>
+                        <Text style={styles.locationText}>
+                            46, Subhiksha Ave, Satya Nagar,{'\n'}
+                            Lakshmi Nagar, Kovilambakkam,{'\n'}
+                            Chennai, Tamil Nadu 600129
+                        </Text>
+                    </View>
+                </ScrollView>
             </SafeAreaView>
         </View>
     );
 }
+
+
 
 const styles = StyleSheet.create({
     container: {

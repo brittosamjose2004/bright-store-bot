@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIn
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { getProductById } from '../lib/firestore';
-import { Product } from '../types';
+import { Product, Variant, VariantOption } from '../types';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { ShoppingBag, Heart, ArrowLeft, Minus, Plus } from 'lucide-react-native';
@@ -16,6 +16,11 @@ export default function ProductDetailsScreen() {
     const [product, setProduct] = useState<Product | null>(null);
     const [loading, setLoading] = useState(true);
     const [quantity, setQuantity] = useState(1);
+
+    // State for selected variants: { "Size": { label: "Large", priceModifier: 50 }, "Color": ... }
+    const [selectedVariants, setSelectedVariants] = useState<Record<string, VariantOption>>({});
+    const [currentPrice, setCurrentPrice] = useState(0);
+
     const { addToCart } = useCart();
     const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
 
@@ -26,7 +31,42 @@ export default function ProductDetailsScreen() {
     const loadProduct = async () => {
         const data = await getProductById(productId);
         setProduct(data);
+        setCurrentPrice(data?.price || 0);
+
+        // Initialize default variants (first option of each)
+        if (data?.variants) {
+            const defaults: Record<string, VariantOption> = {};
+            data.variants.forEach(v => {
+                if (v.options.length > 0) {
+                    defaults[v.name] = v.options[0];
+                }
+            });
+            setSelectedVariants(defaults);
+        }
         setLoading(false);
+    };
+
+    // Update price when variants change
+    useEffect(() => {
+        if (!product) return;
+        let base = product.price;
+        Object.values(selectedVariants).forEach(opt => {
+            base += opt.priceModifier;
+        });
+        setCurrentPrice(base);
+    }, [selectedVariants, product]);
+
+    const handleVariantSelect = (variantName: string, option: VariantOption) => {
+        setSelectedVariants(prev => ({
+            ...prev,
+            [variantName]: option
+        }));
+    };
+
+    const handleAddToCart = () => {
+        if (!product) return;
+        addToCart(product, quantity, selectedVariants);
+        // Optional: Show feedback
     };
 
     if (loading) {
@@ -83,8 +123,8 @@ export default function ProductDetailsScreen() {
 
                     {/* Price */}
                     <View style={styles.priceRow}>
-                        <Text style={styles.price}>₹{product.price}</Text>
-                        <Text style={styles.unit}>/ kg</Text>
+                        <Text style={styles.price}>₹{currentPrice}</Text>
+                        <Text style={styles.unit}>/ unit</Text>
                     </View>
 
                     {/* Wholesale Info & Stock */}
@@ -105,6 +145,38 @@ export default function ProductDetailsScreen() {
                             )}
                         </View>
                     </View>
+
+                    {/* Variant Selectors */}
+                    {product.variants && product.variants.length > 0 && (
+                        <View style={styles.variantsContainer}>
+                            {product.variants.map((variant, index) => (
+                                <View key={index} style={styles.variantGroup}>
+                                    <Text style={styles.variantTitle}>{variant.name}</Text>
+                                    <View style={styles.optionsGrid}>
+                                        {variant.options.map((option, optIndex) => {
+                                            const isSelected = selectedVariants[variant.name]?.label === option.label;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={optIndex}
+                                                    style={[styles.optionChip, isSelected && styles.optionChipSelected]}
+                                                    onPress={() => handleVariantSelect(variant.name, option)}
+                                                >
+                                                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                                                        {option.label}
+                                                    </Text>
+                                                    {option.priceModifier !== 0 && (
+                                                        <Text style={[styles.priceMod, isSelected && styles.priceModSelected]}>
+                                                            {option.priceModifier > 0 ? '+' : ''}{option.priceModifier}
+                                                        </Text>
+                                                    )}
+                                                </TouchableOpacity>
+                                            )
+                                        })}
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
+                    )}
 
                     {/* Description */}
                     <Text style={styles.description}>{product.description}</Text>
@@ -131,7 +203,7 @@ export default function ProductDetailsScreen() {
 
                         <TouchableOpacity
                             style={[styles.addToCartButton, (product.stock_quantity || 0) === 0 && styles.disabledButton]}
-                            onPress={() => addToCart(product, quantity)}
+                            onPress={handleAddToCart}
                             disabled={(product.stock_quantity || 0) === 0}
                         >
                             <ShoppingBag size={20} color={(product.stock_quantity || 0) > 0 ? "black" : "#666"} />
@@ -293,12 +365,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
     },
-    stockIn: {
-        // backgroundColor: 'rgba(34, 197, 94, 0.1)',
-    },
-    stockOut: {
-        // backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    },
+    stockIn: {},
+    stockOut: {},
     stockText: {
         fontSize: 14,
         fontWeight: 'bold',
@@ -317,4 +385,51 @@ const styles = StyleSheet.create({
     disabledButton: {
         backgroundColor: '#262626',
     },
+    variantsContainer: {
+        marginBottom: 24,
+    },
+    variantGroup: {
+        marginBottom: 16,
+    },
+    variantTitle: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 8,
+    },
+    optionsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    optionChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: '#171717',
+        borderWidth: 1,
+        borderColor: '#333',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    optionChipSelected: {
+        backgroundColor: '#EAB308',
+        borderColor: '#EAB308',
+    },
+    optionText: {
+        color: '#9CA3AF',
+        fontSize: 14,
+    },
+    optionTextSelected: {
+        color: 'black',
+        fontWeight: 'bold',
+    },
+    priceMod: {
+        fontSize: 12,
+        color: '#666',
+    },
+    priceModSelected: {
+        color: '#000',
+    }
 });

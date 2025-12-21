@@ -17,8 +17,9 @@ export async function getProducts(): Promise<Product[]> {
         wholesalePrice: item.wholesaleprice, // Map from DB
         category: item.category,
         imageUrl: item.imageurl, // Map from DB
-        inStock: item.instock, // Map from DB
-        minWholesaleQuantity: item.minwholesalequantity, // Map from DB
+        stock_quantity: item.stock_quantity,
+        minWholesaleQuantity: item.minwholesalequantity,
+        variants: item.variants || [], // Map to jsonb
         createdAt: item.created_at,
     })) as Product[];
 }
@@ -57,8 +58,9 @@ export async function getProductById(id: string): Promise<Product | null> {
         wholesalePrice: data.wholesaleprice,
         category: data.category,
         imageUrl: data.imageurl,
-        inStock: data.instock,
+        stock_quantity: data.stock_quantity,
         minWholesaleQuantity: data.minwholesalequantity,
+        variants: data.variants || [],
         createdAt: data.created_at,
     } as Product;
 }
